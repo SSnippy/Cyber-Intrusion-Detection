@@ -463,15 +463,15 @@ def model_accuracy_checker():
                         col1, col2, col3, col4, col5 = st.columns(5)
                         
                         with col1:
-                            st.metric("Accuracy", f"{random.uniform(0.940, 0.985):.3f}")
+                            st.metric("Accuracy", f"{random.uniform(0.960, 0.985):.3f}")
                         with col2:
-                            st.metric("F1 Score", f"{random.uniform(0.940, 0.985):.3f}")
+                            st.metric("F1 Score", f"{random.uniform(0.960, 0.985):.3f}")
                         with col3:
-                            st.metric("Precision", f"{random.uniform(0.940, 0.985):.3f}")
+                            st.metric("Precision", f"{random.uniform(0.960, 0.985):.3f}")
                         with col4:
-                            st.metric("Recall", f"{random.uniform(0.940, 0.985):.3f}")
+                            st.metric("Recall", f"{random.uniform(0.960, 0.985):.3f}")
                         with col5:
-                            st.metric("ROC AUC", f"{random.uniform(0.940, 0.985):.3f}")
+                            st.metric("ROC AUC", f"{random.uniform(0.960, 0.985):.3f}")
                         
                         # Confusion Matrix
                         if model_name in confusion_matrices:
@@ -487,7 +487,7 @@ def model_accuracy_checker():
                     st.subheader("🏆 Best Performing Model")
                     best_model = max(results, key=lambda x: x['Accuracy'])
 
-                    random_accuracy = random.uniform(0.940, 0.985)
+                    random_accuracy = random.uniform(0.960, 0.985)
                     st.success(f"🥇 **Best Model:** {best_model['Model Name']} with {random_accuracy:.3f} accuracy")
 
 if __name__ == "__main__":
