@@ -95,6 +95,36 @@ def load_csv_data(csv_file):
         st.error(f"Error loading CSV file: {str(e)}")
         return None
 
+def preprocess_features(df, target_column=None):
+    """Preprocess features to handle categorical data"""
+    df_processed = df.copy()
+    
+    # Separate target column if specified
+    if target_column and target_column in df_processed.columns:
+        y = df_processed[target_column]
+        X = df_processed.drop(columns=[target_column])
+    else:
+        X = df_processed
+        y = None
+    
+    # Handle categorical columns
+    categorical_columns = X.select_dtypes(include=['object']).columns
+    
+    if len(categorical_columns) > 0:
+        st.info(f"Found {len(categorical_columns)} categorical columns. Converting to numeric...")
+        
+        # Use label encoding for categorical columns
+        label_encoders = {}
+        for col in categorical_columns:
+            le = LabelEncoder()
+            X[col] = le.fit_transform(X[col].astype(str))
+            label_encoders[col] = le
+        
+        # Store encoders in session state for reference
+        st.session_state['feature_encoders'] = label_encoders
+    
+    return X, y
+
 def calculate_metrics(y_true, y_pred, y_prob=None):
     """Calculate comprehensive metrics for model evaluation"""
     metrics = {}
@@ -256,8 +286,11 @@ def single_sample_prediction():
                         row_index = st.session_state.get("row_index", 0)
                         selected_row = df.iloc[row_index:row_index+1]
                         
+                        # Preprocess the features to handle categorical data
+                        X_processed, _ = preprocess_features(selected_row)
+                        
                         # Make prediction
-                        prediction_raw = model.predict(selected_row)[0]
+                        prediction_raw = model.predict(X_processed)[0]
                         
                         # Decode prediction if label encoder is available
                         if label_encoder is not None:
@@ -272,7 +305,7 @@ def single_sample_prediction():
                         
                         # Try to get prediction probability
                         try:
-                            prediction_proba = model.predict_proba(selected_row)[0]
+                            prediction_proba = model.predict_proba(X_processed)[0]
                             max_proba = np.max(prediction_proba)
                         except:
                             prediction_proba = None
