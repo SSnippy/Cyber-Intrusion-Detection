@@ -99,7 +99,14 @@ This is a Streamlit-based web application for AI-powered cyber intrusion detecti
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+- June 24, 2025: Initial setup of AI Cyber Intrusion Detection System
+- June 24, 2025: Fixed label encoding issues - added support for label encoder upload and decoding
+- June 24, 2025: Enhanced metrics calculation to handle mixed string/numeric label types
+- June 24, 2025: Improved error handling for model prediction and evaluation processes
+
 ## Changelog
 
-Changelog:
-- June 24, 2025. Initial setup
+- June 24, 2025: Initial setup
+- June 24, 2025: Added label encoder support to resolve prediction decoding issues

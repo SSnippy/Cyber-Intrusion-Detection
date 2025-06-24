@@ -69,6 +69,22 @@ def load_model(model_file):
         st.error(f"Error loading model: {str(e)}")
         return None
 
+@st.cache_resource
+def load_label_encoder(encoder_file):
+    """Load a label encoder from file"""
+    try:
+        if encoder_file.name.endswith('.joblib'):
+            encoder = joblib.load(encoder_file)
+        elif encoder_file.name.endswith('.pkl'):
+            encoder = pickle.load(encoder_file)
+        else:
+            st.error("Unsupported encoder format. Please use .pkl or .joblib files.")
+            return None
+        return encoder
+    except Exception as e:
+        st.error(f"Error loading label encoder: {str(e)}")
+        return None
+
 @st.cache_data
 def load_csv_data(csv_file):
     """Load CSV data with caching"""
@@ -83,29 +99,53 @@ def calculate_metrics(y_true, y_pred, y_prob=None):
     """Calculate comprehensive metrics for model evaluation"""
     metrics = {}
     
-    # Convert to numpy arrays
+    # Convert to numpy arrays and ensure consistent types
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
     
+    # Handle mixed string/numeric labels by converting to strings for consistency
+    if y_true.dtype == 'object' or y_pred.dtype == 'object':
+        y_true = y_true.astype(str)
+        y_pred = y_pred.astype(str)
+    
     # Basic metrics
     metrics['Accuracy'] = accuracy_score(y_true, y_pred)
-    metrics['F1 Score'] = f1_score(y_true, y_pred, average='weighted')
-    metrics['Precision'] = precision_score(y_true, y_pred, average='weighted')
-    metrics['Recall'] = recall_score(y_true, y_pred, average='weighted')
+    
+    # Handle zero_division for metrics
+    try:
+        metrics['F1 Score'] = f1_score(y_true, y_pred, average='weighted', zero_division=0)
+        metrics['Precision'] = precision_score(y_true, y_pred, average='weighted', zero_division=0)
+        metrics['Recall'] = recall_score(y_true, y_pred, average='weighted', zero_division=0)
+    except Exception as e:
+        st.warning(f"Warning calculating metrics: {str(e)}")
+        metrics['F1 Score'] = 0.0
+        metrics['Precision'] = 0.0
+        metrics['Recall'] = 0.0
     
     # ROC AUC (handle binary and multiclass)
     try:
-        if len(np.unique(y_true)) == 2:
+        unique_classes = np.unique(y_true)
+        if len(unique_classes) == 2:
             if y_prob is not None and len(y_prob.shape) > 1:
+                # For binary classification, use probabilities of positive class
                 metrics['ROC AUC'] = roc_auc_score(y_true, y_prob[:, 1])
             else:
-                metrics['ROC AUC'] = roc_auc_score(y_true, y_pred)
+                # Convert string labels to numeric for ROC AUC
+                from sklearn.preprocessing import LabelEncoder
+                le_temp = LabelEncoder()
+                y_true_numeric = le_temp.fit_transform(y_true)
+                y_pred_numeric = le_temp.transform(y_pred)
+                metrics['ROC AUC'] = roc_auc_score(y_true_numeric, y_pred_numeric)
         else:
             if y_prob is not None:
-                metrics['ROC AUC'] = roc_auc_score(y_true, y_prob, multi_class='ovr', average='weighted')
+                # For multiclass, convert labels to numeric
+                from sklearn.preprocessing import LabelEncoder
+                le_temp = LabelEncoder()
+                y_true_numeric = le_temp.fit_transform(y_true)
+                metrics['ROC AUC'] = roc_auc_score(y_true_numeric, y_prob, multi_class='ovr', average='weighted')
             else:
                 metrics['ROC AUC'] = "N/A (multiclass without probabilities)"
-    except Exception:
+    except Exception as e:
         metrics['ROC AUC'] = "N/A"
     
     return metrics
@@ -186,14 +226,26 @@ def single_sample_prediction():
                         )
     
     with col2:
-        st.subheader("🤖 Upload Model")
+        st.subheader("🤖 Upload Model & Label Encoder")
         model_file = st.file_uploader("Upload trained model (.pkl or .joblib)", 
                                     type=['pkl', 'joblib'], 
                                     key="single_model")
         
+        encoder_file = st.file_uploader("Upload label encoder (optional, .pkl or .joblib)", 
+                                      type=['pkl', 'joblib'], 
+                                      key="single_encoder",
+                                      help="Upload if your model uses encoded labels")
+        
         if model_file is not None and csv_file is not None:
             model = load_model(model_file)
             df = load_csv_data(csv_file)
+            
+            # Load label encoder if provided
+            label_encoder = None
+            if encoder_file is not None:
+                label_encoder = load_label_encoder(encoder_file)
+                if label_encoder is not None:
+                    st.success("✅ Label encoder loaded successfully!")
             
             if model is not None and df is not None:
                 st.success("✅ Model loaded successfully!")
@@ -205,7 +257,18 @@ def single_sample_prediction():
                         selected_row = df.iloc[row_index:row_index+1]
                         
                         # Make prediction
-                        prediction = model.predict(selected_row)[0]
+                        prediction_raw = model.predict(selected_row)[0]
+                        
+                        # Decode prediction if label encoder is available
+                        if label_encoder is not None:
+                            try:
+                                prediction = label_encoder.inverse_transform([prediction_raw])[0]
+                                st.info(f"Raw prediction: {prediction_raw} → Decoded: {prediction}")
+                            except Exception as e:
+                                prediction = prediction_raw
+                                st.warning(f"Could not decode prediction: {str(e)}")
+                        else:
+                            prediction = prediction_raw
                         
                         # Try to get prediction probability
                         try:
@@ -231,7 +294,8 @@ def single_sample_prediction():
                         # Detailed results table
                         result_df = pd.DataFrame({
                             'Model Name': [model_file.name],
-                            'Prediction': [prediction],
+                            'Prediction': [str(prediction)],
+                            'Raw Output': [str(prediction_raw)],
                             'Confidence': [f"{max_proba:.2%}" if max_proba else "N/A"]
                         })
                         
@@ -240,8 +304,18 @@ def single_sample_prediction():
                         # Show probability distribution if available
                         if prediction_proba is not None:
                             with st.expander("📊 Prediction Probabilities"):
+                                # Try to get class names from encoder
+                                if label_encoder is not None:
+                                    try:
+                                        class_names = [str(label_encoder.inverse_transform([i])[0]) 
+                                                     for i in range(len(prediction_proba))]
+                                    except:
+                                        class_names = [f"Class {i}" for i in range(len(prediction_proba))]
+                                else:
+                                    class_names = [f"Class {i}" for i in range(len(prediction_proba))]
+                                
                                 prob_df = pd.DataFrame({
-                                    'Class': [f"Class {i}" for i in range(len(prediction_proba))],
+                                    'Class': class_names,
                                     'Probability': prediction_proba
                                 })
                                 st.bar_chart(prob_df.set_index('Class'))
@@ -275,14 +349,22 @@ def model_accuracy_checker():
                 )
     
     with col2:
-        st.subheader("🤖 Upload Models")
+        st.subheader("🤖 Upload Models & Label Encoder")
         model_files = st.file_uploader("Upload trained models (.pkl or .joblib)", 
                                      type=['pkl', 'joblib'], 
                                      accept_multiple_files=True,
                                      key="multiple_models")
         
+        encoder_file_multi = st.file_uploader("Upload label encoder (optional, .pkl or .joblib)", 
+                                            type=['pkl', 'joblib'], 
+                                            key="multi_encoder",
+                                            help="Upload if your models use encoded labels")
+        
         if model_files:
             st.success(f"✅ {len(model_files)} model(s) uploaded!")
+            
+        if encoder_file_multi is not None:
+            st.success("✅ Label encoder uploaded!")
     
     # Model evaluation
     if test_csv is not None and model_files and len(model_files) > 0:
@@ -295,8 +377,15 @@ def model_accuracy_checker():
                 st.error("❌ Selected label column not found in the dataset!")
                 return
             
+            # Load label encoder if provided
+            multi_label_encoder = None
+            if encoder_file_multi is not None:
+                multi_label_encoder = load_label_encoder(encoder_file_multi)
+                if multi_label_encoder is not None:
+                    st.info("✅ Using label encoder for predictions")
+            
             # Prepare data
-            y_true = test_df[label_column]
+            y_true_original = test_df[label_column].copy()
             X_test = test_df.drop(columns=[label_column])
             
             # Results storage
@@ -315,7 +404,22 @@ def model_accuracy_checker():
                 if model is not None:
                     try:
                         # Make predictions
-                        y_pred = model.predict(X_test)
+                        y_pred_raw = model.predict(X_test)
+                        
+                        # Decode predictions if label encoder is available
+                        if multi_label_encoder is not None:
+                            try:
+                                y_pred = multi_label_encoder.inverse_transform(y_pred_raw)
+                                # Also encode y_true for consistent comparison
+                                y_true = y_true_original.astype(str)
+                                y_pred = [str(pred) for pred in y_pred]
+                            except Exception as e:
+                                st.warning(f"Could not decode predictions for {model_file.name}: {str(e)}")
+                                y_pred = y_pred_raw
+                                y_true = y_true_original
+                        else:
+                            y_pred = y_pred_raw
+                            y_true = y_true_original
                         
                         # Try to get probabilities
                         try:
@@ -333,11 +437,13 @@ def model_accuracy_checker():
                         }
                         results.append(result)
                         
-                        # Store confusion matrix data
+                        # Store confusion matrix data (use consistent format)
                         confusion_matrices[model_file.name] = (y_true, y_pred)
                         
                     except Exception as e:
                         st.error(f"❌ Error evaluating {model_file.name}: {str(e)}")
+                        # Show detailed error for debugging
+                        st.error(f"Detailed error: {type(e).__name__}: {str(e)}")
                 
                 # Update progress
                 progress_bar.progress((i + 1) / len(model_files))
