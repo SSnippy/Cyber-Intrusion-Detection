@@ -482,13 +482,7 @@ def model_accuracy_checker():
                             st.pyplot(fig)
                             plt.close(fig)  # Prevent memory leaks
                 
-                # Best model highlight
-                if len(results) > 1:
-                    st.subheader("🏆 Best Performing Model")
-                    best_model = max(results, key=lambda x: x['Accuracy'])
-
-                    random_accuracy = random.uniform(0.960, 0.985)
-                    st.success(f"🥇 **Best Model:** {best_model['Model Name']} with {random_accuracy:.3f} accuracy")
+                
 
 if __name__ == "__main__":
     main()
