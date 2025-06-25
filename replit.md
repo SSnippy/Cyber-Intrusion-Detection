@@ -7,7 +7,7 @@ This is a Streamlit-based web application for AI-powered cyber intrusion detecti
 ## System Architecture
 
 ### Frontend Architecture
-- **Framework**: Streamlit - chosen for its simplicity in creating data science web applications
+- **Framework**: Streamlit - chosen for its simplicity in creating data science web applications as well as dashboards for ml projects
 - **Styling**: Custom CSS embedded within the Streamlit app for enhanced UI/UX
 - **Layout**: Wide layout with expandable sidebar for better data visualization space
 - **Components**: Interactive widgets for data upload, model selection, and results display
